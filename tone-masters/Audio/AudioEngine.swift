@@ -9,6 +9,8 @@ final class AudioEngine: ObservableObject {
     @Published var centsDeviation: Double = 0
     @Published var permissionGranted: Bool = false
     @Published var isListening: Bool = false
+    @Published var micLevel: Float = 0       // 0.0 – 1.0 RMS, updated in any tap mode
+    @Published var micLevelDB: Float = -60   // dBFS, roughly -60 (silence) to 0
 
     // Shared AVAudioEngine — also used by ToneGenerator
     let avEngine = AVAudioEngine()
@@ -43,34 +45,91 @@ final class AudioEngine: ObservableObject {
 
     func startListening() {
         guard !isListening else { return }
-        let inputNode = avEngine.inputNode
+        installTap(pitchDetection: true)
+        isListening = true
+    }
 
-        // Pass nil format so AVAudioEngine uses the hardware's native format,
-        // avoiding the 'IsFormatSampleRateAndChannelCountValid' crash when the
-        // output format hasn't been resolved yet.
-        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: nil) { [weak self] buffer, _ in
+    // MARK: - Mic Test (level-only tap, no pitch detection)
+
+    func startMicTest() {
+        guard !isListening else { return }
+        // Ensure engine is running — it may not be if permission was denied earlier
+        if !avEngine.isRunning {
+            try? startEngine()
+        }
+        installTap(pitchDetection: false)
+        isListening = true
+    }
+
+    func stopMicTest() {
+        stopListening()
+    }
+
+    // MARK: - Shared tap installer
+
+    private func installTap(pitchDetection: Bool) {
+        // AVAudioEngine compiles its graph on start(). If inputNode had no tap at that
+        // point the hardware mic path is never opened and all tap buffers are silent.
+        // Stopping before installing forces the graph to recompile with inputNode active.
+        // stop() preserves all node attachments and connections (ToneGenerator stays wired).
+        let wasRunning = avEngine.isRunning
+        if wasRunning { avEngine.stop() }
+
+        let inputNode = avEngine.inputNode
+        let hwFormat = inputNode.outputFormat(forBus: 0)
+        let tapFormat: AVAudioFormat? = hwFormat.sampleRate > 0 ? hwFormat : nil
+
+        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: tapFormat) { [weak self] buffer, _ in
             guard let self else { return }
-            guard let channelData = buffer.floatChannelData?[0] else { return }
+
             let frameCount = Int(buffer.frameLength)
-            var samples = [Float](repeating: 0, count: frameCount)
-            memcpy(&samples, channelData, frameCount * MemoryLayout<Float>.size)
+            guard frameCount > 0 else { return }
+
+            // Extract mono float samples regardless of channel layout
+            let samples: [Float]
+            if let floatData = buffer.floatChannelData {
+                // Non-interleaved float (most common on iOS)
+                var s = [Float](repeating: 0, count: frameCount)
+                memcpy(&s, floatData[0], frameCount * MemoryLayout<Float>.size)
+                samples = s
+            } else if let int16Data = buffer.int16ChannelData {
+                // Interleaved 16-bit — convert to float
+                var s = [Float](repeating: 0, count: frameCount)
+                vDSP_vflt16(int16Data[0], 1, &s, 1, vDSP_Length(frameCount))
+                var scale: Float = 1.0 / 32768.0
+                vDSP_vsmul(s, 1, &scale, &s, 1, vDSP_Length(frameCount))
+                samples = s
+            } else {
+                return  // Unknown format — skip
+            }
+
             let actualSampleRate = buffer.format.sampleRate
             let targetFreq = self.targetFrequency
 
             self.analysisQueue.async {
-                let freq = self.runYIN(samples: samples,
-                                      sampleRate: actualSampleRate,
-                                      targetFrequency: targetFreq)
-                let (noteName, cents) = freq.map { self.frequencyToNote($0) } ?? (nil, 0)
+                let rms = self.computeRMS(samples: samples, count: frameCount)
 
-                Task { @MainActor in
-                    self.detectedFrequency = freq
-                    self.detectedNote = noteName
-                    self.centsDeviation = cents
+                if pitchDetection {
+                    let freq = self.runYIN(samples: samples,
+                                          sampleRate: actualSampleRate,
+                                          targetFrequency: targetFreq)
+                    let (noteName, cents) = freq.map { self.frequencyToNote($0) } ?? (nil, 0)
+                    Task { @MainActor in
+                        self.updateMicLevel(rms: rms)
+                        self.detectedFrequency = freq
+                        self.detectedNote = noteName
+                        self.centsDeviation = cents
+                    }
+                } else {
+                    Task { @MainActor in
+                        self.updateMicLevel(rms: rms)
+                    }
                 }
             }
         }
-        isListening = true
+
+        // Restart so the newly-tapped inputNode is part of the active graph.
+        if wasRunning { try? avEngine.start() }
     }
 
     func stopListening() {
@@ -80,15 +139,19 @@ final class AudioEngine: ObservableObject {
         detectedFrequency = nil
         detectedNote = nil
         centsDeviation = 0
+        micLevel = 0
+        micLevelDB = -60
     }
 
     // MARK: - Audio Session
 
     private func configureAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .measurement,
-                                options: [.defaultToSpeaker, .allowBluetooth])
-        try session.setActive(true)
+        // .default mode (not .measurement) lets the iPhone activate its mic normally for voice input.
+        // .measurement disables AGC/processing but can prevent the mic from capturing voice on device.
+        try session.setCategory(.playAndRecord, mode: .default,
+                                options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
+        try session.setActive(true, options: .notifyOthersOnDeactivation)
     }
 
     // MARK: - YIN Pitch Detection
@@ -166,6 +229,21 @@ final class AudioEngine: ObservableObject {
         }
 
         return detectedFreq
+    }
+
+    // MARK: - Mic Level Helpers
+
+    nonisolated func computeRMS(samples: [Float], count: Int) -> Float {
+        var rms: Float = 0
+        vDSP_rmsqv(samples, 1, &rms, vDSP_Length(count))
+        return rms
+    }
+
+    // Must be called on MainActor
+    func updateMicLevel(rms: Float) {
+        micLevel = min(rms * 10, 1.0)   // scale up — typical voice RMS is 0.01–0.1
+        let db = rms > 0 ? 20 * log10(rms) : -60
+        micLevelDB = max(db, -60)
     }
 
     // MARK: - Frequency → Note Name + Cents

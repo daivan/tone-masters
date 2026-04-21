@@ -3,8 +3,10 @@ import SwiftUI
 struct ScalePickerView: View {
     @ObservedObject var exerciseViewModel: ExerciseViewModel
     @ObservedObject var findRangeViewModel: FindYourRangeViewModel
+    @ObservedObject var audioEngine: AudioEngine
     @State private var navigateToExercise = false
     @State private var navigateToFindRange = false
+    @State private var navigateToMicTest = false
 
     var body: some View {
         List {
@@ -13,27 +15,17 @@ struct ScalePickerView: View {
                 Button {
                     navigateToFindRange = true
                 } label: {
-                    HStack {
-                        Image(systemName: "waveform.and.mic")
-                            .font(.title2)
-                            .foregroundStyle(.blue)
-                            .frame(width: 40)
+                    modeRow(icon: "waveform.and.mic", color: .blue,
+                            title: "Find Your Range",
+                            subtitle: "Sing freely and discover your range")
+                }
 
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Find Your Range")
-                                .font(.headline)
-                                .foregroundStyle(.primary)
-                            Text("Sing freely and discover your range")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(.tertiary)
-                            .font(.caption)
-                    }
-                    .padding(.vertical, 4)
+                Button {
+                    navigateToMicTest = true
+                } label: {
+                    modeRow(icon: "mic.badge.plus", color: .orange,
+                            title: "Microphone Test",
+                            subtitle: "Check if your mic is picking up sound")
                 }
             }
 
@@ -44,27 +36,9 @@ struct ScalePickerView: View {
                         exerciseViewModel.selectedScale = scale
                         navigateToExercise = true
                     } label: {
-                        HStack {
-                            Image(systemName: "music.note")
-                                .font(.title2)
-                                .foregroundStyle(.purple)
-                                .frame(width: 40)
-
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(scale.name)
-                                    .font(.headline)
-                                    .foregroundStyle(.primary)
-                                Text("\(scale.notes.count) notes · \(scale.notes.first?.name ?? "") – \(scale.notes.last?.name ?? "")")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .foregroundStyle(.tertiary)
-                                .font(.caption)
-                        }
-                        .padding(.vertical, 4)
+                        modeRow(icon: "music.note", color: .purple,
+                                title: scale.name,
+                                subtitle: "\(scale.notes.count) notes · \(scale.notes.first?.name ?? "") – \(scale.notes.last?.name ?? "")")
                     }
                 }
             }
@@ -77,5 +51,32 @@ struct ScalePickerView: View {
         .navigationDestination(isPresented: $navigateToFindRange) {
             FindYourRangeView(viewModel: findRangeViewModel)
         }
+        .navigationDestination(isPresented: $navigateToMicTest) {
+            MicTestView(audioEngine: audioEngine)
+        }
+    }
+
+    private func modeRow(icon: String, color: Color, title: String, subtitle: String) -> some View {
+        HStack {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundStyle(color)
+                .frame(width: 40)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+            Image(systemName: "chevron.right")
+                .foregroundStyle(.tertiary)
+                .font(.caption)
+        }
+        .padding(.vertical, 4)
     }
 }

@@ -24,7 +24,8 @@ struct ContentView: View {
         NavigationStack {
             ScalePickerView(
                 exerciseViewModel: exerciseViewModel,
-                findRangeViewModel: findRangeViewModel
+                findRangeViewModel: findRangeViewModel,
+                audioEngine: audioEngine
             )
         }
         .task {
