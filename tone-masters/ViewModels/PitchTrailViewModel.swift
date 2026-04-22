@@ -14,16 +14,20 @@ final class PitchTrailViewModel: ObservableObject {
     @Published var currentNote: String? = nil
 
     let visibleWindowSeconds: Double = 6.0
-    let midiLow: Double = 48.0   // C3
-    let midiHigh: Double = 72.0  // C5
     let silenceGapSeconds: TimeInterval = 0.15
 
+    var midiLow: Double { settings.midiLow }
+    var midiHigh: Double { settings.midiHigh }
+
     private let audioEngine: AudioEngine
+    private let settings: VoiceSettings
+    private let listenerID = UUID()
     private var cancellables = Set<AnyCancellable>()
     private var displayTimer: AnyCancellable?
 
-    init(audioEngine: AudioEngine) {
+    init(audioEngine: AudioEngine, settings: VoiceSettings) {
         self.audioEngine = audioEngine
+        self.settings = settings
         observeAudioEngine()
     }
 
@@ -31,7 +35,7 @@ final class PitchTrailViewModel: ObservableObject {
 
     func startListening() {
         audioEngine.targetFrequency = nil
-        audioEngine.startListening()
+        audioEngine.startListening(owner: listenerID)
         isListening = true
 
         displayTimer = Timer.publish(every: 1.0 / 30.0, on: .main, in: .common)
@@ -42,7 +46,7 @@ final class PitchTrailViewModel: ObservableObject {
     }
 
     func stopListening() {
-        audioEngine.stopListening()
+        audioEngine.stopListening(owner: listenerID)
         isListening = false
         displayTimer?.cancel()
         displayTimer = nil

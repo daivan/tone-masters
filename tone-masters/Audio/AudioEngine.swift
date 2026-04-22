@@ -1,6 +1,7 @@
 import AVFoundation
 import Accelerate
 import Combine
+import os
 
 @MainActor
 final class AudioEngine: ObservableObject {
@@ -16,8 +17,15 @@ final class AudioEngine: ObservableObject {
     let avEngine = AVAudioEngine()
 
     // Target frequency hint for octave sanity check.
-    // nonisolated(unsafe) allows read from background queue; writes always happen on MainActor.
-    nonisolated(unsafe) var targetFrequency: Double? = nil
+    // Lock-protected so it's safe to write from @MainActor and read from the audio tap thread.
+    private let _targetFreqLock = OSAllocatedUnfairLock<Double?>(initialState: nil)
+    nonisolated var targetFrequency: Double? {
+        get { _targetFreqLock.withLock { $0 } }
+        set { _targetFreqLock.withLock { $0 = newValue } }
+    }
+
+    // Tracks which ViewModel currently owns the mic tap.
+    private var listenerOwnerID: UUID? = nil
 
     private let analysisQueue = DispatchQueue(label: "com.tonemasters.pitch", qos: .userInitiated)
     nonisolated let sampleRate: Double = 44100
@@ -43,17 +51,30 @@ final class AudioEngine: ObservableObject {
         try avEngine.start()
     }
 
-    func startListening() {
-        guard !isListening else { return }
+    func startListening(owner: UUID) {
+        if listenerOwnerID == owner { return }  // already our tap
+        // Evict any previous owner's tap cleanly before installing a new one
+        if isListening {
+            avEngine.inputNode.removeTap(onBus: 0)
+            detectedFrequency = nil
+            detectedNote = nil
+            centsDeviation = 0
+        }
+        listenerOwnerID = owner
         installTap(pitchDetection: true)
         isListening = true
+    }
+
+    func stopListening(owner: UUID) {
+        guard listenerOwnerID == owner else { return }  // not your tap to stop
+        listenerOwnerID = nil
+        removeTap()
     }
 
     // MARK: - Mic Test (level-only tap, no pitch detection)
 
     func startMicTest() {
         guard !isListening else { return }
-        // Ensure engine is running — it may not be if permission was denied earlier
         if !avEngine.isRunning {
             try? startEngine()
         }
@@ -62,7 +83,18 @@ final class AudioEngine: ObservableObject {
     }
 
     func stopMicTest() {
-        stopListening()
+        listenerOwnerID = nil
+        removeTap()
+    }
+
+    private func removeTap() {
+        avEngine.inputNode.removeTap(onBus: 0)
+        isListening = false
+        detectedFrequency = nil
+        detectedNote = nil
+        centsDeviation = 0
+        micLevel = 0
+        micLevelDB = -60
     }
 
     // MARK: - Shared tap installer
@@ -132,16 +164,6 @@ final class AudioEngine: ObservableObject {
         if wasRunning { try? avEngine.start() }
     }
 
-    func stopListening() {
-        guard isListening else { return }
-        avEngine.inputNode.removeTap(onBus: 0)
-        isListening = false
-        detectedFrequency = nil
-        detectedNote = nil
-        centsDeviation = 0
-        micLevel = 0
-        micLevelDB = -60
-    }
 
     // MARK: - Audio Session
 

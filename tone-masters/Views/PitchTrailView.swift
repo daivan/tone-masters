@@ -116,7 +116,6 @@ struct PitchTrailView: View {
 
     private func drawGridLines(_ context: GraphicsContext, _ plotRect: CGRect,
                                _ midiLow: Double, _ midiHigh: Double) {
-        let cNotes: Set<Double> = [48, 60, 72]
         var midi = midiLow
         while midi <= midiHigh {
             let y = yForMidi(midi, midiLow: midiLow, midiHigh: midiHigh,
@@ -124,7 +123,7 @@ struct PitchTrailView: View {
             var line = Path()
             line.move(to: CGPoint(x: plotRect.minX, y: y))
             line.addLine(to: CGPoint(x: plotRect.maxX, y: y))
-            let isC = cNotes.contains(midi)
+            let isC = Int(midi) % 12 == 0
             context.stroke(
                 line,
                 with: .color(isC ? Color.primary.opacity(0.2) : Color.primary.opacity(0.06)),
@@ -136,16 +135,17 @@ struct PitchTrailView: View {
 
     private func drawYAxisLabels(_ context: GraphicsContext, _ plotRect: CGRect,
                                  _ midiLow: Double, _ midiHigh: Double) {
-        let labeledMidis: [(Double, Bool)] = [
-            (48, true), (50, false), (52, false), (53, false), (55, false), (57, false), (59, false),
-            (60, true), (62, false), (64, false), (65, false), (67, false), (69, false), (71, false),
-            (72, true)
-        ]
-        for (midi, isC) in labeledMidis {
-            guard midi >= midiLow && midi <= midiHigh else { continue }
-            let y = yForMidi(midi, midiLow: midiLow, midiHigh: midiHigh,
+        let low = Int(midiLow)
+        let high = Int(midiHigh)
+        for midi in low...high {
+            let isC = midi % 12 == 0   // C notes: MIDI 0, 12, 24, 36, 48, 60, 72...
+            // Label every note but only draw text for C notes and every other non-C
+            // to avoid crowding. Always label C notes; label other notes every 2 semitones.
+            let shouldLabel = isC || (midi % 2 == 0)
+            guard shouldLabel else { continue }
+            let y = yForMidi(Double(midi), midiLow: midiLow, midiHigh: midiHigh,
                              plotHeight: plotRect.height) + plotRect.minY
-            let name = viewModel.noteName(for: Int(midi))
+            let name = viewModel.noteName(for: midi)
             let label: Text = isC
                 ? Text(name).font(.system(.caption, design: .monospaced).bold()).foregroundColor(.primary)
                 : Text(name).font(.system(.caption2, design: .monospaced)).foregroundColor(.secondary.opacity(0.6))

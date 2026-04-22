@@ -4,42 +4,46 @@ struct ScalePickerView: View {
     @ObservedObject var exerciseViewModel: ExerciseViewModel
     @ObservedObject var findRangeViewModel: FindYourRangeViewModel
     @ObservedObject var pitchTrailViewModel: PitchTrailViewModel
+    @ObservedObject var followSongViewModel: FollowSongViewModel
+    @ObservedObject var voiceSettings: VoiceSettings
     @ObservedObject var audioEngine: AudioEngine
     @State private var navigateToExercise = false
     @State private var navigateToFindRange = false
     @State private var navigateToMicTest = false
     @State private var navigateToPitchTrail = false
+    @State private var navigateToFollowSong = false
+    @State private var navigateToSettings = false
 
     var body: some View {
         List {
-            // Find Your Range mode
             Section {
-                Button {
-                    navigateToFindRange = true
-                } label: {
+                Button { navigateToFindRange = true } label: {
                     modeRow(icon: "waveform.and.mic", color: .blue,
                             title: "Find Your Range",
                             subtitle: "Sing freely and discover your range")
                 }
 
-                Button {
-                    navigateToPitchTrail = true
-                } label: {
+                Button { navigateToPitchTrail = true } label: {
                     modeRow(icon: "waveform.path.ecg", color: .cyan,
                             title: "Pitch Trail",
                             subtitle: "Watch your voice trace in real time")
                 }
 
-                Button {
-                    navigateToMicTest = true
-                } label: {
+                Button { navigateToMicTest = true } label: {
                     modeRow(icon: "mic.badge.plus", color: .orange,
                             title: "Microphone Test",
                             subtitle: "Check if your mic is picking up sound")
                 }
             }
 
-            // Scale drills
+            Section("Follow the Song") {
+                Button { navigateToFollowSong = true } label: {
+                    modeRow(icon: "music.quarternote.3", color: .orange,
+                            title: "Follow the Song",
+                            subtitle: "Sing along with a melody in real time")
+                }
+            }
+
             Section(header: Text("Scale Drills")) {
                 ForEach(ScaleLibrary.all) { scale in
                     Button {
@@ -55,6 +59,13 @@ struct ScalePickerView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Tone Masters")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { navigateToSettings = true } label: {
+                    Image(systemName: "gearshape")
+                }
+            }
+        }
         .navigationDestination(isPresented: $navigateToExercise) {
             ExerciseView(viewModel: exerciseViewModel)
         }
@@ -66,6 +77,12 @@ struct ScalePickerView: View {
         }
         .navigationDestination(isPresented: $navigateToPitchTrail) {
             PitchTrailView(viewModel: pitchTrailViewModel)
+        }
+        .navigationDestination(isPresented: $navigateToFollowSong) {
+            SongPickerView(viewModel: followSongViewModel)
+        }
+        .navigationDestination(isPresented: $navigateToSettings) {
+            SettingsView(settings: voiceSettings)
         }
     }
 

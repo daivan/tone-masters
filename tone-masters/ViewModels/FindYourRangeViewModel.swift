@@ -11,6 +11,7 @@ final class FindYourRangeViewModel: ObservableObject {
     @Published var highestMidi: Int? = nil
 
     private let audioEngine: AudioEngine
+    private let listenerID = UUID()
     private var cancellables = Set<AnyCancellable>()
 
     init(audioEngine: AudioEngine) {
@@ -21,13 +22,13 @@ final class FindYourRangeViewModel: ObservableObject {
     // MARK: - Public
 
     func startListening() {
-        audioEngine.targetFrequency = nil  // no octave sanity guard in free mode
-        audioEngine.startListening()
+        audioEngine.targetFrequency = nil
+        audioEngine.startListening(owner: listenerID)
         isListening = true
     }
 
     func stopListening() {
-        audioEngine.stopListening()
+        audioEngine.stopListening(owner: listenerID)
         isListening = false
     }
 

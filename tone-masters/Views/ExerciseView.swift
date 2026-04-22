@@ -43,6 +43,9 @@ struct ExerciseView: View {
         .navigationTitle(viewModel.selectedScale.name)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .onDisappear {
+            viewModel.cleanup()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {

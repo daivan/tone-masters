@@ -20,6 +20,7 @@ final class ExerciseViewModel: ObservableObject {
 
     private let audioEngine: AudioEngine
     private let toneGenerator: ToneGenerator
+    private let listenerID = UUID()
 
     private var phaseTimer: Timer?
     private var sampleTimer: Timer?
@@ -77,11 +78,15 @@ final class ExerciseViewModel: ObservableObject {
     }
 
     func restartExercise() {
-        cancelTimers()
-        audioEngine.stopListening()
-        toneGenerator.stop()
+        cleanup()
         phase = .idle
         noteResults = []
+    }
+
+    func cleanup() {
+        cancelTimers()
+        audioEngine.stopListening(owner: listenerID)
+        toneGenerator.stop()
     }
 
     // MARK: - State Machine
@@ -105,7 +110,7 @@ final class ExerciseViewModel: ObservableObject {
 
     private func beginListening(noteIndex: Int) {
         centsSamples = []
-        audioEngine.startListening()
+        audioEngine.startListening(owner: listenerID)
         phase = .listening(noteIndex: noteIndex)
 
         // Collect cents samples every 50ms
@@ -129,7 +134,7 @@ final class ExerciseViewModel: ObservableObject {
         phaseTimer?.invalidate()
         phaseTimer = nil
 
-        audioEngine.stopListening()
+        audioEngine.stopListening(owner: listenerID)
 
         let meanAbsCents: Double
         if centsSamples.isEmpty {
