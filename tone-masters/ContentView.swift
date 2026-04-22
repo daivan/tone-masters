@@ -38,6 +38,7 @@ struct ContentView: View {
                 audioEngine: audioEngine
             )
         }
+        .preferredColorScheme(.dark)
         .task {
             await audioEngine.requestPermission()
             if audioEngine.permissionGranted {

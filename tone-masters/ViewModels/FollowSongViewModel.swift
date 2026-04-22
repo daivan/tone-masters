@@ -127,6 +127,14 @@ final class FollowSongViewModel: ObservableObject {
         return Int(Double(passed) / Double(finalScores.count) * 100)
     }
 
+    /// The note whose window contains the current elapsed time (nil during rests).
+    var activeNote: SongNote? {
+        let e = elapsed
+        return currentSong.notes.first {
+            e >= $0.startTime(bpm: currentSong.bpm) && e < $0.endTime(bpm: currentSong.bpm)
+        }
+    }
+
     func timeString(_ seconds: Double) -> String {
         let s = Int(max(0, seconds))
         return String(format: "%d:%02d", s / 60, s % 60)
