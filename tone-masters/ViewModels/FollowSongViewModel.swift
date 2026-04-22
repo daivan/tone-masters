@@ -14,6 +14,10 @@ final class FollowSongViewModel: ObservableObject {
     @Published var currentFrequency: Double? = nil
     @Published var currentNote: String? = nil
     @Published var displayTick: Int = 0
+    @Published var finalScores: [NoteScore] = []
+
+    // MARK: - Score data (keyed by SongNote.id)
+    private var noteScoreData: [UUID: (hit: Int, total: Int)] = [:]
 
     // MARK: - Window constants
     let pastWindowSeconds:  Double = 2.0
@@ -22,9 +26,15 @@ final class FollowSongViewModel: ObservableObject {
     let nowLineFraction:     CGFloat = 0.25
     let silenceGapSeconds:   TimeInterval = 0.15
 
-    // MARK: - Pitch display range (auto-expands to fit song notes)
-    var midiLow:  Double { min(settings.midiLow,  Double(currentSong.lowestMidi  - 2)) }
-    var midiHigh: Double { max(settings.midiHigh, Double(currentSong.highestMidi + 2)) }
+    // MARK: - Transposition
+    // Shifts the whole song so its midpoint lands on the user's center note.
+    var transpositionOffset: Int { settings.centerMidi - currentSong.naturalCenterMidi }
+
+    func transposedMidi(for note: SongNote) -> Int { note.midiNote + transpositionOffset }
+
+    // MARK: - Pitch display range (based on transposed song range)
+    var midiLow:  Double { min(settings.midiLow,  Double(currentSong.lowestMidi  + transpositionOffset - 2)) }
+    var midiHigh: Double { max(settings.midiHigh, Double(currentSong.highestMidi + transpositionOffset + 2)) }
 
     // MARK: - Dependencies
     private let audioEngine: AudioEngine
@@ -69,6 +79,8 @@ final class FollowSongViewModel: ObservableObject {
         audioEngine.stopListening(owner: listenerID)
         startDate = nil
         samples = []
+        noteScoreData = [:]
+        finalScores = []
         phase = .idle
         currentFrequency = nil
         currentNote = nil
@@ -99,6 +111,22 @@ final class FollowSongViewModel: ObservableObject {
         return "\(names[index])\(octave)"
     }
 
+    func hitRate(for note: SongNote) -> Double {
+        let d = noteScoreData[note.id] ?? (hit: 0, total: 0)
+        return d.total > 0 ? Double(d.hit) / Double(d.total) : 0
+    }
+
+    func isCurrentlyHitting(targetMidi: Int) -> Bool {
+        guard let freq = currentFrequency else { return false }
+        return abs(frequencyToMidi(freq) - Double(targetMidi)) <= 1.5
+    }
+
+    var overallScore: Int {
+        guard !finalScores.isEmpty else { return 0 }
+        let passed = finalScores.filter(\.passed).count
+        return Int(Double(passed) / Double(finalScores.count) * 100)
+    }
+
     func timeString(_ seconds: Double) -> String {
         let s = Int(max(0, seconds))
         return String(format: "%d:%02d", s / 60, s % 60)
@@ -112,6 +140,7 @@ final class FollowSongViewModel: ObservableObject {
             .sink { [weak self] _ in
                 guard let self else { return }
                 self.purgeStaleSamples()
+                self.scoreCurrentFrame()
                 self.displayTick &+= 1
                 if self.phase == .playing && self.elapsed >= self.currentSong.totalDuration {
                     self.finishSong()
@@ -120,10 +149,32 @@ final class FollowSongViewModel: ObservableObject {
     }
 
     private func finishSong() {
+        finalScores = currentSong.notes.map { note in
+            let d = noteScoreData[note.id] ?? (hit: 0, total: 0)
+            return NoteScore(note: note, hitFrames: d.hit, totalFrames: d.total)
+        }
         displayTimer?.cancel()
         displayTimer = nil
         audioEngine.stopListening(owner: listenerID)
         phase = .finished
+    }
+
+    private func scoreCurrentFrame() {
+        let e = elapsed
+        for note in currentSong.notes {
+            let start = note.startTime(bpm: currentSong.bpm)
+            let end   = note.endTime(bpm: currentSong.bpm)
+            guard e >= start && e < end else { continue }
+            noteScoreData[note.id, default: (hit: 0, total: 0)].total += 1
+            if let freq = currentFrequency {
+                let userMidi = frequencyToMidi(freq)
+                let targetMidi = Double(transposedMidi(for: note))
+                if abs(userMidi - targetMidi) <= 1.5 {
+                    noteScoreData[note.id, default: (hit: 0, total: 0)].hit += 1
+                }
+            }
+            break  // only one note active at a time
+        }
     }
 
     private func observeAudioEngine() {

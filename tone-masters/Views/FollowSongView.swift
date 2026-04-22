@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FollowSongView: View {
     @ObservedObject var viewModel: FollowSongViewModel
+    @State private var showScore = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,19 +15,26 @@ struct FollowSongView: View {
         .onDisappear {
             viewModel.stopListening()
         }
+        .sheet(isPresented: $showScore) {
+            SongScoreView(viewModel: viewModel, isPresented: $showScore)
+        }
     }
 
     // MARK: - Subviews
 
     private var infoStrip: some View {
         HStack(alignment: .center) {
-            if let note = viewModel.currentNote {
+            if viewModel.phase == .finished {
+                Text("\(viewModel.overallScore)%")
+                    .font(.system(size: 44, weight: .bold, design: .rounded))
+                    .foregroundStyle(viewModel.overallScore >= 80 ? .green : (viewModel.overallScore >= 50 ? .yellow : .red))
+            } else if let note = viewModel.currentNote {
                 Text(note)
                     .font(.system(size: 44, weight: .bold, design: .rounded))
                     .contentTransition(.numericText())
                     .animation(.easeInOut(duration: 0.08), value: note)
             } else {
-                Text(viewModel.phase == .playing ? "—" : (viewModel.phase == .finished ? "Done!" : "Tap Start"))
+                Text(viewModel.phase == .playing ? "—" : "Tap Start")
                     .font(.system(size: 28, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
             }
@@ -91,6 +99,9 @@ struct FollowSongView: View {
                 Button("Restart") { viewModel.restart() }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
+                Button("Results") { showScore = true }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
             }
         }
         .padding(.horizontal, 16)
@@ -152,7 +163,7 @@ struct FollowSongView: View {
                                 _ nowX: CGFloat, _ pps: CGFloat,
                                 _ midiLow: Double, _ midiHigh: Double) {
         let semitoneHeight = plotRect.height / CGFloat(midiHigh - midiLow)
-        let halfH = semitoneHeight * 0.5
+        let halfH = semitoneHeight * 1.5
 
         for note in song.notes {
             let startTime = note.startTime(bpm: song.bpm)
@@ -164,7 +175,7 @@ struct FollowSongView: View {
             // Skip blocks entirely off-screen
             guard x2 > plotRect.minX && x1 < plotRect.maxX else { continue }
 
-            let centerY = yForMidi(Double(note.midiNote), midiLow: midiLow, midiHigh: midiHigh,
+            let centerY = yForMidi(Double(viewModel.transposedMidi(for: note)), midiLow: midiLow, midiHigh: midiHigh,
                                    plotHeight: plotRect.height) + plotRect.minY
             let blockRect = CGRect(
                 x: max(x1, plotRect.minX),
@@ -176,8 +187,21 @@ struct FollowSongView: View {
             let isActive = startTime <= elapsed && elapsed < endTime
             let isPassed = endTime < elapsed
 
-            let fillColor: Color = isActive ? .green : (isPassed ? .gray : .yellow)
-            let opacity: Double  = isActive ? 0.80  : (isPassed ? 0.25  : 0.55)
+            let fillColor: Color
+            let opacity: Double
+
+            if isActive {
+                let hitting = viewModel.isCurrentlyHitting(targetMidi: viewModel.transposedMidi(for: note))
+                fillColor = hitting ? .green : .orange
+                opacity   = hitting ? 0.90   : 0.65
+            } else if isPassed {
+                let rate = viewModel.hitRate(for: note)
+                fillColor = rate >= 0.5 ? .green : .red
+                opacity   = 0.35
+            } else {
+                fillColor = .yellow
+                opacity   = 0.55
+            }
 
             let roundedRect = Path(roundedRect: blockRect, cornerRadius: 4)
             context.fill(roundedRect, with: .color(fillColor.opacity(opacity)))

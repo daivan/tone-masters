@@ -22,4 +22,7 @@ struct Song: Identifiable {
     }
     var highestMidi: Int { notes.map(\.midiNote).max() ?? 60 }
     var lowestMidi:  Int { notes.map(\.midiNote).min() ?? 60 }
+
+    /// Midpoint of the song's note range — used as the transposition anchor.
+    var naturalCenterMidi: Int { (lowestMidi + highestMidi) / 2 }
 }
