@@ -3,10 +3,12 @@ import SwiftUI
 struct ScalePickerView: View {
     @ObservedObject var exerciseViewModel: ExerciseViewModel
     @ObservedObject var findRangeViewModel: FindYourRangeViewModel
+    @ObservedObject var pitchTrailViewModel: PitchTrailViewModel
     @ObservedObject var audioEngine: AudioEngine
     @State private var navigateToExercise = false
     @State private var navigateToFindRange = false
     @State private var navigateToMicTest = false
+    @State private var navigateToPitchTrail = false
 
     var body: some View {
         List {
@@ -18,6 +20,14 @@ struct ScalePickerView: View {
                     modeRow(icon: "waveform.and.mic", color: .blue,
                             title: "Find Your Range",
                             subtitle: "Sing freely and discover your range")
+                }
+
+                Button {
+                    navigateToPitchTrail = true
+                } label: {
+                    modeRow(icon: "waveform.path.ecg", color: .cyan,
+                            title: "Pitch Trail",
+                            subtitle: "Watch your voice trace in real time")
                 }
 
                 Button {
@@ -53,6 +63,9 @@ struct ScalePickerView: View {
         }
         .navigationDestination(isPresented: $navigateToMicTest) {
             MicTestView(audioEngine: audioEngine)
+        }
+        .navigationDestination(isPresented: $navigateToPitchTrail) {
+            PitchTrailView(viewModel: pitchTrailViewModel)
         }
     }
 

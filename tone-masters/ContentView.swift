@@ -11,6 +11,7 @@ struct ContentView: View {
     @StateObject private var audioEngine: AudioEngine
     @StateObject private var exerciseViewModel: ExerciseViewModel
     @StateObject private var findRangeViewModel: FindYourRangeViewModel
+    @StateObject private var pitchTrailViewModel: PitchTrailViewModel
 
     init() {
         let engine = AudioEngine()
@@ -18,6 +19,7 @@ struct ContentView: View {
         _audioEngine = StateObject(wrappedValue: engine)
         _exerciseViewModel = StateObject(wrappedValue: ExerciseViewModel(audioEngine: engine, toneGenerator: tone))
         _findRangeViewModel = StateObject(wrappedValue: FindYourRangeViewModel(audioEngine: engine))
+        _pitchTrailViewModel = StateObject(wrappedValue: PitchTrailViewModel(audioEngine: engine))
     }
 
     var body: some View {
@@ -25,6 +27,7 @@ struct ContentView: View {
             ScalePickerView(
                 exerciseViewModel: exerciseViewModel,
                 findRangeViewModel: findRangeViewModel,
+                pitchTrailViewModel: pitchTrailViewModel,
                 audioEngine: audioEngine
             )
         }
