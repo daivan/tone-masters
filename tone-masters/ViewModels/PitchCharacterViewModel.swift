@@ -18,6 +18,7 @@ final class PitchCharacterViewModel: ObservableObject {
     }
 
     func start() {
+        cancellables.removeAll()
         audioEngine.startListening(owner: listenerID)
         isActive = true
 
@@ -48,5 +49,9 @@ final class PitchCharacterViewModel: ObservableObject {
         audioEngine.stopListening(owner: listenerID)
         cancellables.removeAll()
         isActive = false
+    }
+
+    deinit {
+        cancellables.removeAll()
     }
 }

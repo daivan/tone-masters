@@ -13,6 +13,7 @@ struct Badge: Identifiable {
 
 // MARK: - XPManager
 
+@MainActor
 final class XPManager: ObservableObject {
     static let shared = XPManager()
 

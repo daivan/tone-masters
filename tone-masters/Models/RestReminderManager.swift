@@ -2,6 +2,7 @@ import UserNotifications
 import SwiftUI
 import Combine
 
+@MainActor
 final class RestReminderManager: ObservableObject {
     static let shared = RestReminderManager()
 

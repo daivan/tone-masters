@@ -78,4 +78,8 @@ final class VibratoViewModel: ObservableObject {
     }
 
     var trailPoints: [(midi: Double, date: Date)] { recentPoints }
+
+    deinit {
+        sampleTimer?.cancel()
+    }
 }

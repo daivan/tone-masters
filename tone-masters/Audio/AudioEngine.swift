@@ -103,7 +103,8 @@ final class AudioEngine: ObservableObject {
     }
 
     func stopMicTest() {
-        listenerOwnerID = nil
+        // Only stop the tap if no ViewModel owns it — don't clobber an active session.
+        guard listenerOwnerID == nil else { return }
         removeTap()
     }
 

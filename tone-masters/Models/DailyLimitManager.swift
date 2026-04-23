@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 
+@MainActor
 final class DailyLimitManager: ObservableObject {
     static let shared = DailyLimitManager()
 
