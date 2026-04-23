@@ -12,6 +12,8 @@ final class PitchTrailViewModel: ObservableObject {
     @Published var isListening: Bool = false
     @Published var currentFrequency: Double? = nil
     @Published var currentNote: String? = nil
+    @Published var currentCents: Double = 0
+    @Published var blindMode: Bool = false
 
     let visibleWindowSeconds: Double = 6.0
     let silenceGapSeconds: TimeInterval = 0.15
@@ -91,6 +93,11 @@ final class PitchTrailViewModel: ObservableObject {
             .sink { [weak self] note in
                 self?.currentNote = note
             }
+            .store(in: &cancellables)
+
+        audioEngine.$centsDeviation
+            .receive(on: RunLoop.main)
+            .assign(to: \.currentCents, on: self)
             .store(in: &cancellables)
     }
 

@@ -32,11 +32,15 @@ struct PitchTrailView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            if let freq = viewModel.currentFrequency {
-                Text(String(format: "%.1f Hz", freq))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            if viewModel.currentNote != nil {
+                let cents = viewModel.currentCents
+                let sign  = cents >= 0 ? "+" : ""
+                Text("\(sign)\(Int(cents))¢")
+                    .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(centsColor(cents))
                     .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.1), value: Int(cents))
             }
         }
         .padding(.horizontal, 16)
@@ -44,28 +48,49 @@ struct PitchTrailView: View {
     }
 
     private var trailCanvas: some View {
-        GeometryReader { geo in
-            Canvas { context, size in
-                let plotRect = CGRect(
-                    x: 40, y: 8,
-                    width: size.width - 48,
-                    height: size.height - 16
-                )
-                let samples = viewModel.samples
-                let now = Date.now
-                let window = viewModel.visibleWindowSeconds
-                let midiLow = viewModel.midiLow
-                let midiHigh = viewModel.midiHigh
+        ZStack {
+            GeometryReader { geo in
+                Canvas { context, size in
+                    let plotRect = CGRect(
+                        x: 40, y: 8,
+                        width: size.width - 48,
+                        height: size.height - 16
+                    )
+                    let samples = viewModel.samples
+                    let now = Date.now
+                    let window = viewModel.visibleWindowSeconds
+                    let midiLow = viewModel.midiLow
+                    let midiHigh = viewModel.midiHigh
 
-                drawGridLines(context, plotRect, midiLow, midiHigh)
-                drawYAxisLabels(context, plotRect, midiLow, midiHigh)
-                drawPitchTrail(context, plotRect, samples, now, window, midiLow, midiHigh)
-                drawNowLine(context, plotRect)
+                    drawGridLines(context, plotRect, midiLow, midiHigh)
+                    drawYAxisLabels(context, plotRect, midiLow, midiHigh)
+                    drawPitchTrail(context, plotRect, samples, now, window, midiLow, midiHigh)
+                    drawNowLine(context, plotRect)
+                }
+            }
+            .background(.ultraThinMaterial)
+
+            // Blind mode overlay — covers the trail but lets mic keep running
+            if viewModel.blindMode {
+                ZStack {
+                    Rectangle().fill(.ultraThinMaterial)
+                    VStack(spacing: 10) {
+                        Image(systemName: "eye.slash")
+                            .font(.system(size: 28, weight: .light))
+                            .foregroundStyle(.secondary)
+                        Text("Blind mode — trust your ear")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .kerning(0.8)
+                    }
+                }
+                .transition(.opacity)
             }
         }
-        .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal, 12)
+        .animation(.easeInOut(duration: 0.25), value: viewModel.blindMode)
     }
 
     private var controls: some View {
@@ -87,6 +112,17 @@ struct PitchTrailView: View {
             .tint(viewModel.isListening ? .red : .cyan)
             .controlSize(.large)
 
+            // Blind mode toggle — hide pitch trail so user relies on ear alone
+            Button {
+                viewModel.blindMode.toggle()
+            } label: {
+                Image(systemName: viewModel.blindMode ? "eye.slash.fill" : "eye")
+                    .font(.system(size: 16, weight: .medium))
+            }
+            .buttonStyle(.bordered)
+            .tint(viewModel.blindMode ? .orange : .secondary)
+            .controlSize(.large)
+
             if !viewModel.samples.isEmpty || !viewModel.isListening {
                 Button("Clear") {
                     viewModel.clearTrail()
@@ -98,6 +134,15 @@ struct PitchTrailView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    // MARK: - Helpers
+
+    private func centsColor(_ cents: Double) -> Color {
+        let magnitude = abs(cents)
+        if magnitude <= 15 { return .green }
+        if magnitude <= 30 { return .yellow }
+        return .red
     }
 
     // MARK: - Canvas Drawing

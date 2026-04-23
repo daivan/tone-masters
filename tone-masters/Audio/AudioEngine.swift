@@ -12,6 +12,7 @@ final class AudioEngine: ObservableObject {
     @Published var isListening: Bool = false
     @Published var micLevel: Float = 0       // 0.0 – 1.0 RMS, updated in any tap mode
     @Published var micLevelDB: Float = -60   // dBFS, roughly -60 (silence) to 0
+    @Published var spectrumMagnitudes: [Float] = []
 
     // Shared AVAudioEngine — also used by ToneGenerator
     let avEngine = AVAudioEngine()
@@ -31,6 +32,25 @@ final class AudioEngine: ObservableObject {
     nonisolated let sampleRate: Double = 44100
     private let bufferSize: AVAudioFrameCount = 4096
     nonisolated let yinWindowSize = 1024
+
+    // MARK: - FFT
+    nonisolated(unsafe) private var fftSetup: FFTSetup? = nil
+    nonisolated(unsafe) private var hannWindow: [Float] = []
+
+    // MARK: - Init / Deinit
+
+    init() {
+        fftSetup = vDSP_create_fftsetup(10, FFTRadix(kFFTRadix2))
+        hannWindow = (0..<1024).map { i in
+            Float(0.5 * (1.0 - cos(2.0 * .pi * Double(i) / 1023.0)))
+        }
+    }
+
+    deinit {
+        if let setup = fftSetup {
+            vDSP_destroy_fftsetup(setup)
+        }
+    }
 
     // MARK: - Permission & Lifecycle
 
@@ -95,6 +115,7 @@ final class AudioEngine: ObservableObject {
         centsDeviation = 0
         micLevel = 0
         micLevelDB = -60
+        spectrumMagnitudes = []
     }
 
     // MARK: - Shared tap installer
@@ -146,11 +167,13 @@ final class AudioEngine: ObservableObject {
                                           sampleRate: actualSampleRate,
                                           targetFrequency: targetFreq)
                     let (noteName, cents) = freq.map { self.frequencyToNote($0) } ?? (nil, 0)
+                    let spectrum = self.computeSpectrum(samples: samples)
                     Task { @MainActor in
                         self.updateMicLevel(rms: rms)
                         self.detectedFrequency = freq
                         self.detectedNote = noteName
                         self.centsDeviation = cents
+                        self.spectrumMagnitudes = spectrum
                     }
                 } else {
                     Task { @MainActor in
@@ -251,6 +274,52 @@ final class AudioEngine: ObservableObject {
         }
 
         return detectedFreq
+    }
+
+    // MARK: - FFT Spectrum
+
+    nonisolated private func computeSpectrum(samples: [Float]) -> [Float] {
+        guard let fftSetup, samples.count >= 1024 else { return [] }
+
+        let fftN = 1024
+        let halfN = fftN / 2
+
+        // Apply Hann window
+        var windowed = [Float](repeating: 0, count: fftN)
+        vDSP_vmul(samples, 1, hannWindow, 1, &windowed, 1, vDSP_Length(fftN))
+
+        // Pack real signal into split complex form (pairs of floats as complex)
+        var realPart = [Float](repeating: 0, count: halfN)
+        var imagPart = [Float](repeating: 0, count: halfN)
+        var magnitudes = [Float](repeating: 0, count: halfN)
+
+        realPart.withUnsafeMutableBufferPointer { realBuf in
+            imagPart.withUnsafeMutableBufferPointer { imagBuf in
+                var splitComplex = DSPSplitComplex(realp: realBuf.baseAddress!, imagp: imagBuf.baseAddress!)
+                windowed.withUnsafeBytes { rawBytes in
+                    let ptr = rawBytes.bindMemory(to: DSPComplex.self)
+                    vDSP_ctoz(ptr.baseAddress!, 2, &splitComplex, 1, vDSP_Length(halfN))
+                }
+                vDSP_fft_zrip(fftSetup, &splitComplex, 1, 10, FFTDirection(FFT_FORWARD))
+                magnitudes.withUnsafeMutableBufferPointer { magBuf in
+                    vDSP_zvabs(&splitComplex, 1, magBuf.baseAddress!, 1, vDSP_Length(halfN))
+                }
+            }
+        }
+
+        // Scale
+        var scale: Float = 1.0 / Float(fftN)
+        vDSP_vsmul(magnitudes, 1, &scale, &magnitudes, 1, vDSP_Length(halfN))
+
+        // Normalize to 0-1
+        var maxVal: Float = 0
+        vDSP_maxv(magnitudes, 1, &maxVal, vDSP_Length(halfN))
+        if maxVal > 0 {
+            var invMax = 1.0 / maxVal
+            vDSP_vsmul(magnitudes, 1, &invMax, &magnitudes, 1, vDSP_Length(halfN))
+        }
+
+        return magnitudes  // 512 elements
     }
 
     // MARK: - Mic Level Helpers

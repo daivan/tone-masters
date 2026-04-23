@@ -88,7 +88,7 @@ struct SongBuilder {
         currentBeat = beat
     }
 
-    func build(title: String) -> Song {
-        Song(title: title, bpm: bpm, notes: notes)
+    func build(title: String, genre: SongGenre = .folk) -> Song {
+        Song(title: title, bpm: bpm, notes: notes, genre: genre)
     }
 }

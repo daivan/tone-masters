@@ -127,6 +127,12 @@ final class FollowSongViewModel: ObservableObject {
         return Int(Double(passed) / Double(finalScores.count) * 100)
     }
 
+    /// Cents deviation from the active target note (nil during rests or silence).
+    var centsFromTarget: Double? {
+        guard let freq = currentFrequency, let note = activeNote else { return nil }
+        return (frequencyToMidi(freq) - Double(transposedMidi(for: note))) * 100.0
+    }
+
     /// The note whose window contains the current elapsed time (nil during rests).
     var activeNote: SongNote? {
         let e = elapsed

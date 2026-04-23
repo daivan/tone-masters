@@ -28,6 +28,6 @@ extension SongLibrary {
         b.note("F3"); b.note("F3"); b.note("E3"); b.note("E3")
         b.note("D3"); b.note("D3"); b.note("C3", beats: 2)
 
-        return b.build(title: "Twinkle Twinkle Little Star")
+        return b.build(title: "Twinkle Twinkle Little Star", genre: .childrens)
     }()
 }

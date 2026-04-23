@@ -19,6 +19,6 @@ extension SongLibrary {
         b.note("Bb3", beats: 0.75); b.note("Bb3", beats: 0.25)
         b.note("A3"); b.note("F3"); b.note("G3"); b.note("F3", beats: 2)
 
-        return b.build(title: "Happy Birthday")
+        return b.build(title: "Happy Birthday", genre: .pop)
     }()
 }

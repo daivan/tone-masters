@@ -43,7 +43,7 @@ struct FollowSongView: View {
                 .textCase(.uppercase)
                 .kerning(1.2)
             Spacer()
-            // Status dot + note label
+            // Status dot + note label + cents
             HStack(spacing: 6) {
                 Circle()
                     .fill(isHittingCurrentNote ? Color.tmGood : Color.tmAccent)
@@ -52,7 +52,16 @@ struct FollowSongView: View {
                 Text(viewModel.currentNote ?? "—")
                     .font(.system(size: 13, weight: .semibold, design: .monospaced))
                     .foregroundStyle(Color.tmInk)
-                    .frame(minWidth: 36, alignment: .leading)
+                    .frame(minWidth: 30, alignment: .leading)
+                if let cents = viewModel.centsFromTarget {
+                    let sign = cents >= 0 ? "+" : ""
+                    Text("\(sign)\(Int(cents))¢")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(centsColor(cents))
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .animation(.easeInOut(duration: 0.1), value: Int(cents))
+                }
             }
         }
         .padding(.horizontal, 18)
@@ -260,6 +269,13 @@ struct FollowSongView: View {
     private var scoreColor: Color {
         viewModel.overallScore >= 80 ? .tmGood :
         viewModel.overallScore >= 50 ? Color(red: 0.9, green: 0.78, blue: 0.3) : .tmWarn
+    }
+
+    private func centsColor(_ cents: Double) -> Color {
+        let magnitude = abs(cents)
+        if magnitude <= 15 { return .tmGood }
+        if magnitude <= 30 { return Color(red: 0.9, green: 0.78, blue: 0.3) }
+        return .tmWarn
     }
 
     // MARK: - Coordinate helpers

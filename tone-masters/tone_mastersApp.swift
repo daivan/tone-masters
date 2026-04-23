@@ -12,6 +12,7 @@ struct tone_mastersApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .task { RestReminderManager.shared.requestPermission() }
         }
     }
 }
